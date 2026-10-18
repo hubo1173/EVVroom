@@ -245,6 +245,7 @@
     <div class="row">
       <button id="engineSoundBtn" style="flex:1">Engine ON</button>
       <button id="carSoundBtn" style="flex:1">Car ON</button>
+      <button id="themeBtn" style="flex:0.6">Dark</button>
     </div>
     <div class="row">
       <label style="flex:0 0 70px; font-size:0.85rem;">Engine Vol</label>
@@ -301,6 +302,7 @@ let simMode = false;
 let boomboxMode = false;
 let engineSoundOn = true;
 let carSoundOn = true;
+let darkMode = true;
 let roadOffset = 0;
 let particles = [];
 let lastLoad = 0;
@@ -806,6 +808,43 @@ document.getElementById('shiftBtn').onclick = () => {
   setTimeout(() => {
     if (isRunning) updateStatus('Engine running', 'ok');
   }, 400);
+};
+
+document.getElementById('shareBtn').onclick = async () => {
+  const shareData = {
+    title: 'EVVroom • Live Engine Sound',
+    text: 'Realistic engine sounds for EVs — try EVVroom',
+    url: window.location.href
+  };
+  if (navigator.share) {
+    try {
+      await navigator.share(shareData);
+      updateStatus('Shared', 'ok');
+    } catch (e) {
+      if (e.name !== 'AbortError') updateStatus('Share cancelled', 'warn');
+    }
+  } else {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      updateStatus('Link copied', 'ok');
+    } catch (e) {
+      updateStatus('Copy failed', 'warn');
+    }
+  }
+  setTimeout(() => {
+    if (isRunning) updateStatus('Engine running', 'ok');
+  }, 1500);
+};
+
+document.getElementById('themeBtn').onclick = () => {
+  darkMode = !darkMode;
+  const btn = document.getElementById('themeBtn');
+  btn.textContent = darkMode ? 'Dark' : 'Light';
+  document.documentElement.style.setProperty('--bg', darkMode ? '#000000' : '#f2f2f7');
+  document.documentElement.style.setProperty('--text', darkMode ? '#f5f5f7' : '#1d1d1f');
+  document.documentElement.style.setProperty('--panel', darkMode ? 'rgba(22, 22, 26, 0.75)' : 'rgba(255,255,255,0.9)');
+  document.documentElement.style.setProperty('--muted', darkMode ? '#8e8e93' : '#6e6e73');
+  document.body.style.background = darkMode ? '#000000' : '#f2f2f7';
 };
 
 document.getElementById('volume').oninput = e => {
