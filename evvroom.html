@@ -1,0 +1,1130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>EVVroom • Live Engine Sound</title>
+<style>
+  :root {
+    --bg: #000000;
+    --panel: rgba(22, 22, 26, 0.75);
+    --accent: #e31937;
+    --accent2: #4d7cff;
+    --text: #f5f5f7;
+    --muted: #8e8e93;
+    --green: #30d158;
+    --panel-border: rgba(255,255,255,0.1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", system-ui, sans-serif;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    -webkit-font-smoothing: antialiased;
+  }
+  #canvas {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    z-index: 0;
+  }
+  .ui {
+    position: relative;
+    z-index: 10;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 18px 16px 14px;
+    pointer-events: none;
+  }
+  .ui * { pointer-events: auto; }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  h1 {
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+  }
+  h1 span { color: var(--accent); }
+  .tag { 
+    font-size: 0.62rem; 
+    color: var(--muted); 
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+  .disclaimer {
+    font-size: 0.6rem;
+    color: var(--muted);
+    text-align: center;
+    margin-bottom: 16px;
+    line-height: 1.3;
+    opacity: 0.8;
+  }
+  .gauges {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin: 8px 0 20px;
+  }
+  .gauge {
+    text-align: center;
+    background: var(--panel);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--panel-border);
+    border-radius: 28px;
+    padding: 20px 24px 16px;
+    min-width: 160px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+  }
+  .gauge .value {
+    font-size: 4.2rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 0.85;
+    letter-spacing: -2.5px;
+  }
+  .gauge .unit, .gauge .label {
+    font-size: 0.62rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 1.4px;
+    margin-top: 8px;
+    font-weight: 500;
+  }
+  .speed .value { color: #ffffff; }
+  .rpm .value { color: var(--accent2); }
+  .rpm-arc {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 42px;
+    height: 42px;
+    opacity: 0.85;
+  }
+  .load-bar {
+    height: 5px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    margin-top: 14px;
+    overflow: hidden;
+  }
+  .load-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #e31937, #ff4d4d);
+    transition: width 0.12s ease-out;
+    border-radius: 3px;
+    box-shadow: 0 0 10px rgba(227, 25, 55, 0.5);
+  }
+  .controls {
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .row { display: flex; gap: 8px; align-items: center; }
+  button, select, input[type=range] {
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--panel-border);
+    border-radius: 18px;
+    padding: 14px 12px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+  button {
+    cursor: pointer;
+    flex: 1;
+    transition: transform 0.07s ease, opacity 0.15s ease;
+  }
+  button:active { transform: scale(0.95); }
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 6px 16px rgba(227, 25, 55, 0.3);
+  }
+  select { flex: 1; }
+  input[type=range] { 
+    flex: 2; 
+    accent-color: var(--accent); 
+    height: 5px; 
+    background: transparent;
+  }
+  .status {
+    text-align: center;
+    font-size: 0.72rem;
+    color: var(--muted);
+    min-height: 1.2em;
+    margin: 6px 0 10px;
+    font-weight: 500;
+  }
+  .status.ok { color: var(--green); }
+  .status.warn { color: #ff9f0a; }
+  footer {
+    font-size: 0.55rem;
+    color: #2a2a2a;
+    text-align: center;
+    padding: 4px;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div class="ui">
+  <header>
+    <h1>EVV<span>room</span></h1>
+    <div class="tag">Live Engine</div>
+  </header>
+  <div class="disclaimer">
+    Entertainment only. Eyes on the road. GPS speed is approximate.<br>
+    Interact only when stopped. Volume low enough to hear traffic.
+  </div>
+
+  <div class="gauges">
+    <div class="gauge speed">
+      <div class="value" id="speed">0</div>
+      <div class="unit" id="speedUnit">KM/H</div>
+    </div>
+    <div class="gauge rpm">
+      <svg class="rpm-arc" viewBox="0 0 36 36">
+        <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="3"/>
+        <circle id="rpmArc" cx="18" cy="18" r="15" fill="none" stroke="#3e6ae1" stroke-width="3" stroke-linecap="round" stroke-dasharray="94.2" stroke-dashoffset="94.2" transform="rotate(-90 18 18)"/>
+      </svg>
+      <div class="value" id="rpm">800</div>
+      <div class="label">RPM</div>
+      <div class="load-bar"><div class="load-fill" id="loadFill"></div></div>
+      <div class="label" id="loadText">0% load</div>
+    </div>
+  </div>
+
+  <div class="status" id="status">Tap Start to enable audio & location</div>
+
+  <div class="controls">
+    <div class="row">
+      <button id="startBtn" class="primary">Start Engine</button>
+      <button id="simBtn">Simulate</button>
+      <button id="boomboxBtn">Boombox</button>
+      <button id="shiftBtn">Shift</button>
+    </div>
+    <div class="row">
+      <select id="engineType">
+        <option value="v8">V8 Muscle (Synth)</option>
+        <option value="v8modern">V8 Modern (Synth)</option>
+        <option value="v6">V6 (Synth)</option>
+        <option value="v10">V10 (Synth)</option>
+        <option value="sport">Sports Coupe (Synth)</option>
+        <option value="ev">EV Whine (Synth)</option>
+        <option value="diesel">Diesel Truck (Synth)</option>
+        <option value="rotary">Rotary (Synth)</option>
+        <option value="v12">V12 Grand Tourer (Synth)</option>
+        <option value="inline4">Inline-4 Turbo (Synth)</option>
+        <option value="flat6">Flat-6 (Synth)</option>
+        <option value="sample-mustang">Ford Mustang (Real)</option>
+        <option value="sample-viper">Dodge Viper (Real)</option>
+        <option value="sample-ferrari">Ferrari Enzo (Real)</option>
+        <option value="sample-lambo">Lamborghini (Real)</option>
+        <option value="sample-audi">Audi V10 (Real)</option>
+      </select>
+      <button id="unitBtn">mph</button>
+    </div>
+    <div class="row">
+      <button id="engineSoundBtn" style="flex:1">Engine ON</button>
+      <button id="carSoundBtn" style="flex:1">Car ON</button>
+    </div>
+    <div class="row">
+      <label style="flex:0 0 70px; font-size:0.85rem;">Engine Vol</label>
+      <input type="range" id="volume" min="0" max="100" value="55">
+    </div>
+    <div class="row">
+      <label style="flex:0 0 70px; font-size:0.85rem;">Exhaust</label>
+      <input type="range" id="exhaustVol" min="0" max="100" value="70">
+    </div>
+    <div class="row" style="justify-content:center; margin-top:4px;">
+      <div id="gearDisplay" style="font-size:1.4rem; font-weight:700; letter-spacing:2px; color:#fff; background:rgba(28,28,32,0.65); padding:6px 16px; border-radius:12px; border:1px solid rgba(255,255,255,0.08); min-width:60px; text-align:center;">D1</div>
+    </div>
+  </div>
+
+  <div class="sim-panel" id="simPanel">
+    <div class="row">
+      <label style="flex:0 0 70px; font-size:0.85rem;">Fake speed</label>
+      <input type="range" id="simSpeed" min="0" max="240" value="0" step="1">
+      <span id="simVal" style="width:42px; text-align:right; font-variant-numeric:tabular-nums;">0</span>
+    </div>
+    <div style="font-size:0.72rem; color:var(--muted); margin-top:6px;">
+      Arrows ↑↓ or slider. GPS overrides when available and not in sim mode.
+    </div>
+  </div>
+</div>
+<footer>Inspired by real-time engine synthesis. Not affiliated with dribe.app. Drive safely.</footer>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let w, h;
+
+function resize() {
+  w = canvas.width = window.innerWidth * devicePixelRatio;
+  h = canvas.height = window.innerHeight * devicePixelRatio;
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  ctx.scale(devicePixelRatio, devicePixelRatio);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Audio state
+let audioCtx, masterGain, exhaustGain, intakeGain, noiseGain, filter, dist, lfoGain, bassBoost;
+let oscillators = [];
+let noiseSource;
+let isRunning = false;
+let currentSpeed = 0;
+let targetSpeed = 0;
+let currentRpm = 800;
+let currentLoad = 0;
+let useMph = false;
+let simMode = false;
+let boomboxMode = false;
+let engineSoundOn = true;
+let carSoundOn = true;
+let roadOffset = 0;
+let particles = [];
+let lastLoad = 0;
+let popGain = null;
+let currentGear = 1;
+let gearDisplayEl = null;
+let sampleBuffer = null;
+let sampleSource = null;
+let usingSample = false;
+let rpmLayers = []; // {buffer, source, gain, targetRpm}
+
+const publicSamples = {
+  'sample-mustang': 'https://archive.org/download/car-engines/10%20Ford%20Mustang.mp3',
+  'sample-viper': 'https://archive.org/download/car-engines/13%20Dodge%20Viper.mp3',
+  'sample-ferrari': 'https://archive.org/download/car-engines/14%20Ferrari%20Enzo.mp3',
+  'sample-lambo': 'https://archive.org/download/car-engines/15%20Lamborghini%20Countach.mp3',
+  'sample-audi': 'https://archive.org/download/car-engines/11%20Audi%20v10.mp3'
+};
+
+const engines = {
+  v8: {
+    name: 'V8 Muscle',
+    idle: 780, redline: 6500,
+    base: 38, harmonics: [1, 1.5, 2, 2.5, 3, 4],
+    wave: ['sawtooth','square','sawtooth','square','triangle','sine'],
+    detune: 12, filterBase: 380, filterMod: 0.32,
+    noise: 0.28, roughness: 0.22, color: '#ff3b30',
+    exhaustBoost: 1.55, firing: 4
+  },
+  v8modern: {
+    name: 'V8 Modern',
+    idle: 650, redline: 7200,
+    base: 42, harmonics: [1, 1.5, 2, 2.5, 3],
+    wave: ['sawtooth','square','triangle','sine','sine'],
+    detune: 6, filterBase: 480, filterMod: 0.36,
+    noise: 0.16, roughness: 0.08, color: '#ff453a',
+    exhaustBoost: 1.2, firing: 4
+  },
+  sport: {
+    name: 'Sports Coupe',
+    idle: 920, redline: 8200,
+    base: 72, harmonics: [1, 2, 3, 4, 5],
+    wave: ['sawtooth','square','sawtooth','triangle','sine'],
+    detune: 5, filterBase: 850, filterMod: 0.42,
+    noise: 0.14, roughness: 0.09, color: '#00d4ff',
+    exhaustBoost: 1.15, firing: 4
+  },
+  ev: {
+    name: 'EV Whine',
+    idle: 0, redline: 18000,
+    base: 220, harmonics: [1, 1.02, 2.05, 3.1],
+    wave: ['sine','triangle','sine','sine'],
+    detune: 0.8, filterBase: 1400, filterMod: 0.55,
+    noise: 0.03, roughness: 0.015, color: '#30d158',
+    exhaustBoost: 0.45, firing: 1
+  },
+  diesel: {
+    name: 'Diesel Truck',
+    idle: 620, redline: 4000,
+    base: 28, harmonics: [1, 1.25, 2, 2.5],
+    wave: ['sawtooth','square','sawtooth','triangle'],
+    detune: 28, filterBase: 240, filterMod: 0.22,
+    noise: 0.42, roughness: 0.35, color: '#ff9500',
+    exhaustBoost: 1.75, firing: 6
+  },
+  rotary: {
+    name: 'Rotary',
+    idle: 1150, redline: 9000,
+    base: 105, harmonics: [1, 1.5, 2.5, 4],
+    wave: ['sawtooth','square','triangle','sine'],
+    detune: 7, filterBase: 1600, filterMod: 0.48,
+    noise: 0.18, roughness: 0.14, color: '#bf5af2',
+    exhaustBoost: 1.25, firing: 2
+  },
+  v12: {
+    name: 'V12 Grand Tourer',
+    idle: 720, redline: 7800,
+    base: 48, harmonics: [1, 1.5, 2, 2.5, 3, 4],
+    wave: ['sine','sawtooth','triangle','sine','square','sine'],
+    detune: 3, filterBase: 620, filterMod: 0.28,
+    noise: 0.09, roughness: 0.04, color: '#ffd60a',
+    exhaustBoost: 0.85, firing: 6
+  },
+  inline4: {
+    name: 'Inline-4 Turbo',
+    idle: 850, redline: 7200,
+    base: 85, harmonics: [1, 2, 3, 4],
+    wave: ['sawtooth','square','triangle','sine'],
+    detune: 6, filterBase: 920, filterMod: 0.45,
+    noise: 0.16, roughness: 0.1, color: '#64d2ff',
+    exhaustBoost: 1.2, firing: 4
+  },
+  flat6: {
+    name: 'Flat-6',
+    idle: 880, redline: 8000,
+    base: 68, harmonics: [1, 1.5, 2, 3, 4],
+    wave: ['sawtooth','triangle','square','sine','triangle'],
+    detune: 4, filterBase: 780, filterMod: 0.38,
+    noise: 0.12, roughness: 0.07, color: '#ff375f',
+    exhaustBoost: 1.1, firing: 6
+  },
+  v6: {
+    name: 'V6',
+    idle: 750, redline: 6800,
+    base: 55, harmonics: [1, 1.5, 2, 3],
+    wave: ['sawtooth','square','triangle','sine'],
+    detune: 8, filterBase: 520, filterMod: 0.35,
+    noise: 0.18, roughness: 0.12, color: '#5ac8fa',
+    exhaustBoost: 1.25, firing: 3
+  },
+  v10: {
+    name: 'V10',
+    idle: 820, redline: 8500,
+    base: 62, harmonics: [1, 1.5, 2, 2.5, 3, 4],
+    wave: ['sawtooth','square','triangle','sine','square','sine'],
+    detune: 5, filterBase: 740, filterMod: 0.4,
+    noise: 0.11, roughness: 0.06, color: '#ff9f0a',
+    exhaustBoost: 1.05, firing: 5
+  }
+};
+
+function makeNoiseBuffer() {
+  const len = audioCtx.sampleRate * 4;
+  const buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < len; i++) {
+    // Pink-ish noise for more natural combustion texture
+    const white = Math.random() * 2 - 1;
+    last = (last + 0.02 * white) / 1.02;
+    data[i] = last * 0.9;
+  }
+  return buf;
+}
+
+function makeDistortionCurve(amount = 20) {
+  const n = 44100;
+  const curve = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    const x = (i * 2) / n - 1;
+    curve[i] = (Math.PI + amount) * x / (Math.PI + amount * Math.abs(x));
+  }
+  return curve;
+}
+
+function playStartSound() {
+  if (!audioCtx || !engineSoundOn) return;
+  const now = audioCtx.currentTime;
+
+  // Starter motor whir
+  const starter = audioCtx.createOscillator();
+  starter.type = 'sawtooth';
+  starter.frequency.setValueAtTime(80, now);
+  starter.frequency.exponentialRampToValueAtTime(180, now + 0.6);
+  const starterGain = audioCtx.createGain();
+  starterGain.gain.setValueAtTime(0, now);
+  starterGain.gain.linearRampToValueAtTime(0.25, now + 0.08);
+  starterGain.gain.linearRampToValueAtTime(0.18, now + 0.5);
+  starterGain.gain.exponentialRampToValueAtTime(0.001, now + 0.75);
+  starter.connect(starterGain);
+  starterGain.connect(filter);
+  starter.start(now);
+  starter.stop(now + 0.8);
+
+  // Cranking noise
+  const crankNoise = audioCtx.createBufferSource();
+  crankNoise.buffer = makeNoiseBuffer();
+  const crankGain = audioCtx.createGain();
+  crankGain.gain.setValueAtTime(0, now);
+  crankGain.gain.linearRampToValueAtTime(0.3, now + 0.1);
+  crankGain.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+  const crankFilter = audioCtx.createBiquadFilter();
+  crankFilter.type = 'bandpass';
+  crankFilter.frequency.value = 350;
+  crankNoise.connect(crankFilter);
+  crankFilter.connect(crankGain);
+  crankGain.connect(filter);
+  crankNoise.start(now);
+  crankNoise.stop(now + 1.0);
+
+  // Catch and settle
+  setTimeout(() => {
+    if (isRunning && exhaustGain) {
+      exhaustGain.gain.setTargetAtTime(0.6, audioCtx.currentTime, 0.1);
+    }
+  }, 700);
+}
+
+async function startAudio() {
+  if (isRunning) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = document.getElementById('volume').value / 100 * 0.35;
+
+  // Bass boost for boombox mode
+  bassBoost = audioCtx.createBiquadFilter();
+  bassBoost.type = 'lowshelf';
+  bassBoost.frequency.value = 120;
+  bassBoost.gain.value = 0;
+  bassBoost.connect(audioCtx.destination);
+  masterGain.connect(bassBoost);
+
+  // Distortion for grit
+  dist = audioCtx.createWaveShaper();
+  dist.curve = makeDistortionCurve(18);
+  dist.oversample = '2x';
+  dist.connect(masterGain);
+
+  // Main filter
+  filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.Q.value = 0.8;
+  filter.connect(dist);
+
+  // Exhaust layer
+  exhaustGain = audioCtx.createGain();
+  exhaustGain.gain.value = 0.6;
+
+  // Intake / body layer
+  intakeGain = audioCtx.createGain();
+  intakeGain.gain.value = 0.4;
+
+  // Better exhaust filter (more resonant, muffler-like)
+  const exhaustFilter = audioCtx.createBiquadFilter();
+  exhaustFilter.type = 'lowpass';
+  exhaustFilter.frequency.value = 800;
+  exhaustFilter.Q.value = 1.2;
+  exhaustFilter.connect(filter);
+  exhaustGain.connect(exhaustFilter);
+
+  // Intake has higher frequency content
+  const intakeFilter = audioCtx.createBiquadFilter();
+  intakeFilter.type = 'highpass';
+  intakeFilter.frequency.value = 200;
+  intakeFilter.Q.value = 0.5;
+  intakeFilter.connect(filter);
+  intakeGain.connect(intakeFilter);
+
+  // Noise
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = makeNoiseBuffer();
+  noiseSource.loop = true;
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = 0.1;
+  const noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = 'bandpass';
+  noiseFilter.frequency.value = 180;
+  noiseFilter.Q.value = 0.6;
+  noiseSource.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseGain.connect(filter);
+  noiseSource.start();
+
+  // Roughness LFO
+  const lfo = audioCtx.createOscillator();
+  lfo.frequency.value = 4.5;
+  lfoGain = audioCtx.createGain();
+  lfoGain.gain.value = 8;
+  lfo.connect(lfoGain);
+  lfo.start();
+
+  // Pop / crackle layer for overrun
+  popGain = audioCtx.createGain();
+  popGain.gain.value = 0;
+  const popFilter = audioCtx.createBiquadFilter();
+  popFilter.type = 'highpass';
+  popFilter.frequency.value = 1200;
+  popFilter.Q.value = 0.7;
+  popGain.connect(popFilter);
+  popFilter.connect(filter);
+
+  rebuildOscillators();
+  isRunning = true;
+  document.getElementById('startBtn').textContent = 'Stop Engine';
+  document.getElementById('startBtn').classList.remove('primary');
+  updateStatus('Starting…', 'ok');
+  playStartSound();
+  lastFrame = performance.now();
+  requestAnimationFrame(animate);
+  setTimeout(() => updateStatus('Engine running', 'ok'), 1200);
+}
+
+function rebuildOscillators() {
+  oscillators.forEach(o => { try { o.osc.stop(); } catch(e){} });
+  oscillators = [];
+  const engKey = document.getElementById('engineType').value;
+  const eng = engines[engKey] || engines.v8;
+
+  eng.harmonics.forEach((h, i) => {
+    const osc = audioCtx.createOscillator();
+    osc.type = eng.wave[i] || 'sawtooth';
+    osc.frequency.value = eng.base * h;
+    osc.detune.value = (Math.random() - 0.5) * eng.detune * 8;
+
+    const g = audioCtx.createGain();
+    const vol = (i === 0 ? 0.35 : 0.18 / eng.harmonics.length) * (i < 3 ? 1 : 0.6);
+    g.gain.value = vol;
+
+    // Connect roughness LFO to frequency of lower harmonics
+    if (i < 2 && lfoGain) lfoGain.connect(osc.frequency);
+
+    osc.connect(g);
+    if (i < 3) g.connect(exhaustGain);
+    else g.connect(intakeGain);
+    osc.start();
+    oscillators.push({ osc, gain: g, harmonic: h, baseVol: vol });
+  });
+}
+
+function stopAudio() {
+  if (!isRunning) return;
+  oscillators.forEach(o => { try { o.osc.stop(); } catch(e){} });
+  if (noiseSource) try { noiseSource.stop(); } catch(e){}
+  if (audioCtx) audioCtx.close();
+  isRunning = false;
+  document.getElementById('startBtn').textContent = 'Start Engine';
+  document.getElementById('startBtn').classList.add('primary');
+  updateStatus('Engine stopped');
+}
+
+function updateStatus(msg, cls = '') {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + cls;
+}
+
+function startLocation() {
+  if (!navigator.geolocation) {
+    updateStatus('Geolocation unavailable — use Simulate', 'warn');
+    return;
+  }
+  navigator.geolocation.watchPosition(
+    pos => {
+      if (pos.coords.speed != null && pos.coords.speed >= 0 && !simMode) {
+        // Direct assignment for lower latency; light smoothing happens later
+        targetSpeed = pos.coords.speed * 3.6;
+      }
+    },
+    err => updateStatus('Location denied — use Simulate mode', 'warn'),
+    { enableHighAccuracy: true, maximumAge: 200, timeout: 5000 }
+  );
+}
+
+document.getElementById('simBtn').onclick = () => {
+  simMode = !simMode;
+  document.getElementById('simPanel').classList.toggle('active', simMode);
+  document.getElementById('simBtn').textContent = simMode ? 'GPS Mode' : 'Simulate';
+  if (simMode) updateStatus('Simulation mode');
+};
+
+document.getElementById('simSpeed').oninput = e => {
+  if (simMode) {
+    targetSpeed = +e.target.value;
+    document.getElementById('simVal').textContent = Math.round(targetSpeed);
+  }
+};
+
+document.addEventListener('keydown', e => {
+  if (!simMode) return;
+  if (e.key === 'ArrowUp') targetSpeed = Math.min(240, targetSpeed + 4);
+  if (e.key === 'ArrowDown') targetSpeed = Math.max(0, targetSpeed - 4);
+  document.getElementById('simSpeed').value = targetSpeed;
+  document.getElementById('simVal').textContent = Math.round(targetSpeed);
+});
+
+document.getElementById('unitBtn').onclick = () => {
+  useMph = !useMph;
+  document.getElementById('unitBtn').textContent = useMph ? 'km/h' : 'mph';
+  document.getElementById('speedUnit').textContent = useMph ? 'MPH' : 'KM/H';
+};
+
+document.getElementById('boomboxBtn').onclick = async () => {
+  boomboxMode = !boomboxMode;
+  const btn = document.getElementById('boomboxBtn');
+  btn.textContent = boomboxMode ? 'Boombox ON' : 'Boombox';
+  btn.style.background = boomboxMode ? '#ff9500' : '';
+  btn.style.color = boomboxMode ? '#000' : '';
+
+  if (bassBoost) {
+    bassBoost.gain.setTargetAtTime(boomboxMode ? 9 : 0, audioCtx.currentTime, 0.1);
+  }
+
+  if (boomboxMode && audioCtx && typeof audioCtx.setSinkId === 'function') {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const outputs = devices.filter(d => d.kind === 'audiooutput');
+      if (outputs.length > 1) {
+        // Prefer non-default / external if available
+        const external = outputs.find(d => !d.label.toLowerCase().includes('default') && !d.label.toLowerCase().includes('speaker')) || outputs[outputs.length - 1];
+        await audioCtx.setSinkId(external.deviceId);
+        updateStatus('Boombox: routed to ' + (external.label || 'external'), 'ok');
+      } else {
+        updateStatus('Boombox mode (bass boost). Connect Bluetooth speaker.', 'ok');
+      }
+    } catch (e) {
+      updateStatus('Boombox mode (bass boost). Output select not available.', 'warn');
+    }
+  } else if (boomboxMode) {
+    updateStatus('Boombox mode — bass boost on. Connect a Bluetooth speaker.', 'ok');
+  } else {
+    if (audioCtx && typeof audioCtx.setSinkId === 'function') {
+      try { await audioCtx.setSinkId(''); } catch(e){}
+    }
+    updateStatus('Boombox off', 'ok');
+  }
+};
+
+document.getElementById('engineSoundBtn').onclick = () => {
+  engineSoundOn = !engineSoundOn;
+  const btn = document.getElementById('engineSoundBtn');
+  btn.textContent = engineSoundOn ? 'Engine ON' : 'Engine OFF';
+  btn.style.opacity = engineSoundOn ? '1' : '0.5';
+  if (!engineSoundOn && exhaustGain) exhaustGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+  if (!engineSoundOn && noiseGain) noiseGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+};
+
+document.getElementById('carSoundBtn').onclick = () => {
+  carSoundOn = !carSoundOn;
+  const btn = document.getElementById('carSoundBtn');
+  btn.textContent = carSoundOn ? 'Car ON' : 'Car OFF';
+  btn.style.opacity = carSoundOn ? '1' : '0.5';
+  if (!carSoundOn && intakeGain) intakeGain.gain.setTargetAtTime(0, audioCtx.currentTime, 0.05);
+};
+
+async function loadPublicSample(key) {
+  if (!audioCtx || !publicSamples[key]) return;
+  updateStatus('Loading real sample…', 'ok');
+  try {
+    // Stop any existing sample layers
+    rpmLayers.forEach(l => { try { l.source.stop(); } catch(e){} });
+    rpmLayers = [];
+    if (sampleSource) { try { sampleSource.stop(); } catch(e){} sampleSource = null; }
+
+    const res = await fetch(publicSamples[key]);
+    const arr = await res.arrayBuffer();
+    sampleBuffer = await audioCtx.decodeAudioData(arr);
+    usingSample = true;
+    updateStatus('Real sample loaded: ' + key.replace('sample-', ''), 'ok');
+  } catch (e) {
+    updateStatus('Sample failed — using synth', 'warn');
+    usingSample = false;
+    sampleBuffer = null;
+  }
+}
+
+document.getElementById('engineType').onchange = async () => {
+  const val = document.getElementById('engineType').value;
+  if (val.startsWith('sample-')) {
+    // Stop synth if running
+    oscillators.forEach(o => { try { o.osc.stop(); } catch(e){} });
+    oscillators = [];
+    await loadPublicSample(val);
+  } else {
+    usingSample = false;
+    sampleBuffer = null;
+    rpmLayers.forEach(l => { try { l.source.stop(); } catch(e){} });
+    rpmLayers = [];
+    if (isRunning) rebuildOscillators();
+  }
+};
+
+function playShiftSound() {
+  if (!audioCtx || !isRunning) return;
+  const now = audioCtx.currentTime;
+
+  // Low mechanical thump
+  const thump = audioCtx.createOscillator();
+  thump.type = 'sine';
+  thump.frequency.setValueAtTime(90, now);
+  thump.frequency.exponentialRampToValueAtTime(40, now + 0.12);
+  const thumpGain = audioCtx.createGain();
+  thumpGain.gain.setValueAtTime(0.4, now);
+  thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+  thump.connect(thumpGain);
+  thumpGain.connect(masterGain);
+  thump.start(now);
+  thump.stop(now + 0.2);
+
+  // Click / clunk
+  const click = audioCtx.createOscillator();
+  click.type = 'square';
+  click.frequency.setValueAtTime(800, now);
+  click.frequency.exponentialRampToValueAtTime(200, now + 0.05);
+  const clickGain = audioCtx.createGain();
+  clickGain.gain.setValueAtTime(0.2, now);
+  clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+  click.connect(clickGain);
+  clickGain.connect(masterGain);
+  click.start(now);
+  click.stop(now + 0.1);
+
+  // Brief RPM dip on shift
+  if (currentRpm > 1500) {
+    currentRpm = Math.max(800, currentRpm * 0.72);
+  }
+}
+
+document.getElementById('shiftBtn').onclick = () => {
+  playShiftSound();
+  updateStatus('Shift', 'ok');
+  setTimeout(() => {
+    if (isRunning) updateStatus('Engine running', 'ok');
+  }, 400);
+};
+
+document.getElementById('volume').oninput = e => {
+  if (masterGain) masterGain.gain.value = e.target.value / 100 * 0.35;
+};
+
+document.getElementById('exhaustVol').oninput = e => {
+  const val = e.target.value / 100;
+  if (exhaustGain) exhaustGain.gain.setTargetAtTime(val * 0.6, audioCtx.currentTime, 0.05);
+};
+
+document.getElementById('startBtn').onclick = async () => {
+  if (!isRunning) {
+    await startAudio();
+    startLocation();
+    if ('wakeLock' in navigator) {
+      try { await navigator.wakeLock.request('screen'); } catch(e){}
+    }
+  } else stopAudio();
+};
+
+// Particles for speed effect
+function spawnParticles(speed, color) {
+  if (speed < 30) return;
+  const count = Math.min(6, Math.floor(speed / 40));
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * window.innerWidth,
+      y: Math.random() * window.innerHeight * 0.6,
+      vx: (Math.random() - 0.5) * 2,
+      vy: 2 + speed * 0.08,
+      life: 1,
+      size: 1 + Math.random() * 2,
+      color
+    });
+  }
+}
+
+let lastFrame = 0;
+function animate(ts) {
+  if (!isRunning) return;
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.04, (ts - lastFrame) / 1000);
+  lastFrame = ts;
+
+  // Faster tracking for lower latency
+  const prevSpeed = currentSpeed;
+  const speedAlpha = Math.min(1, dt * 18); // tighter response
+  currentSpeed += (targetSpeed - currentSpeed) * speedAlpha;
+  if (Math.abs(currentSpeed) < 0.3) currentSpeed = 0;
+
+  const engKey = document.getElementById('engineType').value;
+  const eng = engines[engKey] || engines.v8;
+  const speedNorm = Math.min(1, currentSpeed / 180);
+  const targetRpm = eng.idle + speedNorm * (eng.redline - eng.idle) * 0.85 + Math.sin(ts / 280) * 18;
+  const rpmAlpha = Math.min(1, dt * 12);
+  currentRpm += (targetRpm - currentRpm) * rpmAlpha;
+
+  const accel = (currentSpeed - prevSpeed) / Math.max(0.01, dt);
+  const targetLoad = Math.max(0, Math.min(100, 12 + speedNorm * 58 + accel * 2.2));
+  currentLoad += (targetLoad - currentLoad) * 0.55;
+
+  // Exhaust pops on throttle lift (deceleration under load)
+  if (popGain && engineSoundOn && lastLoad > 40 && currentLoad < lastLoad - 8 && currentRpm > 2000) {
+    const now = audioCtx.currentTime;
+    popGain.gain.cancelScheduledValues(now);
+    popGain.gain.setValueAtTime(0.15 + Math.random() * 0.1, now);
+    popGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08 + Math.random() * 0.06);
+  }
+  lastLoad = currentLoad;
+
+  // Gear logic (simple automatic)
+  const speedForGear = currentSpeed;
+  let newGear = 1;
+  if (speedForGear < 15) newGear = 1;
+  else if (speedForGear < 40) newGear = 2;
+  else if (speedForGear < 70) newGear = 3;
+  else if (speedForGear < 110) newGear = 4;
+  else if (speedForGear < 160) newGear = 5;
+  else newGear = 6;
+
+  if (newGear !== currentGear && isRunning) {
+    const isUp = newGear > currentGear;
+    playShiftSound();
+    const gearEl = document.getElementById('gearDisplay');
+    if (gearEl) {
+      gearEl.textContent = 'D' + newGear;
+      gearEl.style.transform = 'scale(1.15)';
+      gearEl.style.transition = 'transform 0.15s ease';
+      setTimeout(() => { gearEl.style.transform = 'scale(1)'; }, 150);
+    }
+    if (isUp) currentRpm *= 0.72;
+    currentGear = newGear;
+  }
+  document.getElementById('speed').textContent = Math.round(disp);
+  document.getElementById('rpm').textContent = Math.round(currentRpm);
+  document.getElementById('loadFill').style.width = currentLoad + '%';
+  document.getElementById('loadText').textContent = Math.round(currentLoad) + '% load';
+
+  // Animate RPM arc
+  const rpmArc = document.getElementById('rpmArc');
+  if (rpmArc) {
+    const maxRpm = eng.redline || 8000;
+    const pct = Math.min(1, Math.max(0, currentRpm / maxRpm));
+    const circumference = 94.2;
+    rpmArc.style.strokeDashoffset = circumference * (1 - pct);
+    rpmArc.style.stroke = currentLoad > 70 ? '#e31937' : '#3e6ae1';
+  }
+
+  // Audio updates — layered pitch crossfade for real samples
+  if (usingSample && sampleBuffer && audioCtx) {
+    // Ensure two layers for smooth crossfade
+    if (rpmLayers.length < 2) {
+      rpmLayers.forEach(l => { try { l.source.stop(); } catch(e){} });
+      rpmLayers = [];
+      for (let i = 0; i < 2; i++) {
+        const src = audioCtx.createBufferSource();
+        src.buffer = sampleBuffer;
+        src.loop = true;
+        const g = audioCtx.createGain();
+        g.gain.value = i === 0 ? 0.85 : 0.15;
+        src.connect(g);
+        g.connect(filter);
+        src.start();
+        rpmLayers.push({ source: src, gain: g });
+      }
+    }
+
+    // More natural pitch curve (less extreme stretch, better idle)
+    const baseRpm = 900;
+    const ratio = Math.max(0.65, Math.min(1.9, currentRpm / baseRpm));
+    const loadGain = 0.6 + currentLoad / 180;
+    const blend = Math.min(0.45, (currentRpm - 800) / 4000);
+
+    if (rpmLayers[0]) {
+      rpmLayers[0].source.playbackRate.setTargetAtTime(ratio, audioCtx.currentTime, 0.06);
+      rpmLayers[0].gain.gain.setTargetAtTime((1 - blend) * loadGain, audioCtx.currentTime, 0.04);
+    }
+    if (rpmLayers[1]) {
+      rpmLayers[1].source.playbackRate.setTargetAtTime(ratio * 1.04, audioCtx.currentTime, 0.06);
+      rpmLayers[1].gain.gain.setTargetAtTime(blend * loadGain, audioCtx.currentTime, 0.04);
+    }
+    // Open filter more with load for realism
+    filter.frequency.setTargetAtTime(800 + currentRpm * 0.35 + currentLoad * 8, audioCtx.currentTime, 0.04);
+  } else if (oscillators.length && audioCtx) {
+    const rpmRatio = Math.max(0.4, currentRpm / Math.max(eng.idle, 1));
+    const loadFactor = 0.45 + currentLoad / 110;
+    const now = audioCtx.currentTime;
+    // Stronger, more irregular firing pulse
+    const pulse = 0.78 + 0.22 * Math.sin(now * eng.firing * currentRpm / 100 * Math.PI * 2) * (0.7 + Math.random() * 0.3);
+    oscillators.forEach((o, i) => {
+      const freq = eng.base * o.harmonic * rpmRatio;
+      o.osc.frequency.setTargetAtTime(freq, now, 0.012);
+      o.gain.gain.setTargetAtTime(o.baseVol * loadFactor * pulse, now, 0.018);
+    });
+    const f = eng.filterBase + currentRpm * eng.filterMod * 1.1 + currentLoad * 5;
+    filter.frequency.setTargetAtTime(Math.min(4800, f), now, 0.018);
+    filter.Q.setTargetAtTime(0.6 + currentLoad / 140, now, 0.03);
+    noiseGain.gain.setTargetAtTime(engineSoundOn ? eng.noise * (0.55 + speedNorm * 0.9) * (0.65 + currentLoad / 180) : 0, now, 0.025);
+    if (lfoGain) lfoGain.gain.setTargetAtTime(eng.roughness * 11 * (1 - speedNorm * 0.65), now, 0.03);
+    exhaustGain.gain.setTargetAtTime(engineSoundOn ? 0.52 * eng.exhaustBoost * (0.55 + currentLoad / 95) : 0, now, 0.018);
+    intakeGain.gain.setTargetAtTime(carSoundOn ? 0.38 * (0.5 + currentLoad / 130) : 0, now, 0.018);
+  }
+
+  drawScene(currentSpeed, currentRpm, currentLoad, eng);
+}
+
+function drawScene(speed, rpm, load, eng) {
+  const cw = window.innerWidth;
+  const ch = window.innerHeight;
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+
+  // Showroom walls & ceiling
+  const wallGrad = ctx.createLinearGradient(0, 0, 0, ch * 0.55);
+  wallGrad.addColorStop(0, '#0a0a10');
+  wallGrad.addColorStop(0.7, '#12121a');
+  wallGrad.addColorStop(1, '#181820');
+  ctx.fillStyle = wallGrad;
+  ctx.fillRect(0, 0, cw, ch * 0.55);
+
+  // Ceiling lights / spotlights
+  const lightY = ch * 0.08;
+  for (let i = 0; i < 5; i++) {
+    const x = (cw / 6) * (i + 1);
+    const spot = ctx.createRadialGradient(x, lightY, 5, x, lightY, 90);
+    spot.addColorStop(0, 'rgba(255,255,255,0.35)');
+    spot.addColorStop(0.4, 'rgba(255,240,200,0.12)');
+    spot.addColorStop(1, 'transparent');
+    ctx.fillStyle = spot;
+    ctx.beginPath();
+    ctx.arc(x, lightY, 90, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Light beam down
+    ctx.fillStyle = 'rgba(255,255,255,0.04)';
+    ctx.beginPath();
+    ctx.moveTo(x - 15, lightY + 10);
+    ctx.lineTo(x + 15, lightY + 10);
+    ctx.lineTo(x + 40, ch * 0.5);
+    ctx.lineTo(x - 40, ch * 0.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Polished floor
+  const floorTop = ch * 0.52;
+  const floorGrad = ctx.createLinearGradient(0, floorTop, 0, ch);
+  floorGrad.addColorStop(0, '#1a1a24');
+  floorGrad.addColorStop(0.3, '#0e0e14');
+  floorGrad.addColorStop(1, '#08080c');
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, floorTop, cw, ch - floorTop);
+
+  // Floor reflections / shine
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 8; i++) {
+    const y = floorTop + (ch - floorTop) * (i / 8);
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(cw, y);
+    ctx.stroke();
+  }
+
+  // Display platforms
+  const platforms = [
+    { x: cw * 0.18, y: ch * 0.62, w: 140, h: 18 },
+    { x: cw * 0.5, y: ch * 0.58, w: 180, h: 22 },
+    { x: cw * 0.82, y: ch * 0.64, w: 130, h: 16 }
+  ];
+
+  platforms.forEach((p, idx) => {
+    // Platform
+    ctx.fillStyle = '#222230';
+    ctx.fillRect(p.x - p.w/2, p.y, p.w, p.h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.strokeRect(p.x - p.w/2, p.y, p.w, p.h);
+
+    // Simple car silhouette on platform
+    const carW = p.w * 0.7;
+    const carH = 28 + (idx === 1 ? 8 : 0);
+    const carY = p.y - carH + 4;
+
+    // Body
+    ctx.fillStyle = idx === 1 ? eng.color : (idx === 0 ? '#333' : '#2a2a38');
+    ctx.beginPath();
+    ctx.roundRect(p.x - carW/2, carY + 8, carW, carH - 8, 6);
+    ctx.fill();
+
+    // Roof / cabin
+    ctx.fillStyle = idx === 1 ? eng.color + 'cc' : '#1a1a22';
+    ctx.beginPath();
+    ctx.roundRect(p.x - carW*0.35, carY, carW*0.7, carH*0.55, 8);
+    ctx.fill();
+
+    // Wheels
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(p.x - carW*0.28, p.y + 4, 7, 0, Math.PI * 2);
+    ctx.arc(p.x + carW*0.28, p.y + 4, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#444';
+    ctx.beginPath();
+    ctx.arc(p.x - carW*0.28, p.y + 4, 3, 0, Math.PI * 2);
+    ctx.arc(p.x + carW*0.28, p.y + 4, 3, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Subtle reflection on floor
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = idx === 1 ? eng.color : '#333';
+    ctx.beginPath();
+    ctx.ellipse(p.x, p.y + p.h + 8, carW * 0.4, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+  });
+
+  // Center stage glow reacting to load / RPM
+  if (load > 15 || rpm > 1200) {
+    const intensity = Math.min(1, load / 100 + (rpm - 800) / 8000);
+    const glow = ctx.createRadialGradient(cw/2, ch * 0.58, 20, cw/2, ch * 0.58, 220);
+    glow.addColorStop(0, eng.color + Math.floor(intensity * 40).toString(16).padStart(2,'0'));
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.fillRect(cw/2 - 220, ch * 0.4, 440, 280);
+  }
+
+  // Ambient particles (dust / light motes)
+  spawnParticles(Math.max(speed * 0.3, 20), eng.color);
+  particles = particles.filter(p => {
+    p.y += p.vy * 0.4;
+    p.x += p.vx * 0.5;
+    p.life -= 0.008;
+    if (p.life <= 0 || p.y > ch || p.y < 0) return false;
+    ctx.globalAlpha = p.life * 0.35;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    return true;
+  });
+  ctx.globalAlpha = 1;
+
+  // Torque vectoring visual (subtle side bias under load)
+  const bias = (load / 100) * 50 * Math.sin(Date.now() / 160);
+  ctx.fillStyle = 'rgba(227, 25, 55, 0.06)';
+  ctx.beginPath();
+  ctx.ellipse(cw / 2 + bias, ch * 0.78, 110, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Floor edge highlight
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, floorTop);
+  ctx.lineTo(cw, floorTop);
+  ctx.stroke();
+}
+
+drawScene(0, 800, 0, engines.v8);
+</script>
+</body>
+</html>
